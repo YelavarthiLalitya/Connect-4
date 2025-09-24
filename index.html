@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>4 in a Row</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  #board { display: grid; grid-template-columns: repeat(7, 50px); grid-gap: 5px; margin-top: 20px; }
+  .cell { width: 50px; height: 50px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .player0 { background: red; }
+  .player1 { background: yellow; }
+  .clickable { cursor: pointer; }
+  table { margin-top: 20px; border-collapse: collapse; }
+  th, td { padding: 5px 10px; border: 1px solid #000; }
+</style>
+</head>
+<body>
+
+<h2>4 in a Row</h2>
+<label>Username: <input type="text" id="username" /></label>
+<button id="joinBtn">Join Game</button>
+<h3 id="status"></h3>
+<div id="board"></div>
+<h3>Winner: <span id="winner"></span></h3>
+
+<h3>Leaderboard</h3>
+<table id="leaderboard">
+  <thead>
+    <tr><th>Player</th><th>Wins</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let ws;
+let myPlayer = null;
+let currentTurn = null;
+let board = Array.from({ length: 6 }, () => Array(7).fill(null));
+
+const boardDiv = document.getElementById('board');
+const status = document.getElementById('status');
+const winnerSpan = document.getElementById('winner');
+
+function renderBoard() {
+  boardDiv.innerHTML = '';
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 7; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (board[r][c] === 0) cell.classList.add('player0');
+      if (board[r][c] === 1) cell.classList.add('player1');
+
+      // Top-row clickable cells for dropping disc
+      if (r === 0 && currentTurn === myPlayer) {
+        cell.classList.add('clickable');
+        cell.onclick = () => {
+          ws.send(JSON.stringify({ type: 'move', col: c }));
+        };
+      }
+
+      boardDiv.appendChild(cell);
+    }
+  }
+}
+
+// Determine current turn based on disc counts
+function updateTurn() {
+  const counts = {0:0, 1:0};
+  board.flat().forEach(v => { if(v!==null) counts[v]++; });
+  currentTurn = (counts[0] <= counts[1]) ? 0 : 1;
+}
+
+// Fetch leaderboard from backend
+async function updateLeaderboard() {
+  try {
+    const res = await fetch('http://localhost:3001/leaderboard');
+    const data = await res.json();
+    const tbody = document.querySelector('#leaderboard tbody');
+    tbody.innerHTML = '';
+    data.forEach(player => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${player.username}</td><td>${player.wins}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Failed to fetch leaderboard', err);
+  }
+}
+
+// Join game
+document.getElementById('joinBtn').onclick = () => {
+  const username = document.getElementById('username').value.trim();
+  if (!username) return alert('Enter username');
+
+  ws = new WebSocket('ws://localhost:3000');
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'join', username }));
+    status.innerText = 'Waiting for opponent...';
+  };
+
+  ws.onmessage = msg => {
+    const data = JSON.parse(msg.data);
+
+    if (data.type === 'start') {
+      myPlayer = data.you;
+      status.innerText = 'Game started! You are Player ' + myPlayer;
+      updateTurn();
+      renderBoard();
+    }
+
+    if (data.type === 'update') {
+      board = data.board;
+      updateTurn();
+      renderBoard();
+      status.innerText = currentTurn === myPlayer ? "Your turn" : "Opponent/Bot's turn";
+    }
+
+    if (data.type === 'end') {
+      board = data.board || board;
+      renderBoard();
+      winnerSpan.innerText = data.winner || 'Draw';
+      status.innerText = 'Game ended!';
+      updateLeaderboard(); // refresh leaderboard
+    }
+  };
+
+  renderBoard();
+};
+
+async function updateLeaderboard() {
+  try {
+    const res = await fetch('http://localhost:3000/leaderboard');
+    const data = await res.json();
+    const tbody = document.querySelector('#leaderboard tbody');
+    tbody.innerHTML = '';
+    data.forEach(player => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${player.username}</td><td>${player.wins}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Failed to fetch leaderboard', err);
+  }
+}
+
+// Call on page load
+updateLeaderboard();
+
+// Refresh leaderboard after game ends
+ws.onmessage = msg => {
+  const data = JSON.parse(msg.data);
+  if (data.type === 'update') { board = data.board; renderBoard(); }
+  if (data.type === 'end') {
+    board = data.board || board;
+    renderBoard();
+    winnerSpan.innerText = data.winner || 'Draw';
+    status.innerText = 'Game ended!';
+    updateLeaderboard(); // refresh leaderboard
+  }
+};
+
+</script>
+
+</body>
+</html>
