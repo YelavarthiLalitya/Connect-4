@@ -31,11 +31,14 @@ app.get('/leaderboard', async (req, res) => {
   }
 });
 
+// Use environment port first, fallback to 3000
+const PORT = process.env.PORT || 3000;
 
-// Start HTTP server
-const server = app.listen(3000, () => {
-  console.log('Server running on :3000');
+// Bind to 0.0.0.0 so it's accessible outside the container
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
 
 // WebSocket server on same port
 const wss = new WebSocketServer({ server });
