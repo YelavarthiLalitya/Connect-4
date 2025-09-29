@@ -170,32 +170,40 @@ class GameManager {
     });
   }
 
-  async endGame(game, winner) {
+ async endGame(game, winner) {
     console.log('Ending game:', game.id, 'Winner:', winner);
+
+    // Determine real winner
+    if (!winner) {
+        console.log('Game ended in a draw.');
+    } else if (winner === 'BOT') {
+        console.log('Bot won, leaderboard not updated.');
+    } else {
+        console.log('Player won:', winner);
+    }
 
     // Notify players
     this.broadcast(game, { type: 'end', winner, board: game.board, moves: game.moves });
 
     try {
-      // Save game to DB
-      await this.saveGameToDatabase(game, winner);
+        // Save game to DB
+        await this.saveGameToDatabase(game, winner);
 
-      // Update leaderboard if winner is a real player
-      if (winner && winner !== 'BOT') {
-        await this.updateLeaderboard(winner);
-      } else {
-        console.log('No leaderboard update needed (BOT or no winner).');
-      }
+        // Update leaderboard only for real players
+        if (winner && winner !== 'BOT') {
+            await this.updateLeaderboard(winner);
+        }
     } catch (err) {
-      console.error('Database error in endGame:', err);
+        console.error('Error in endGame DB operations:', err);
     }
 
     // Clean up
     this.games.delete(game.id);
     game.players.forEach(p => {
-      if (p && p.username !== 'BOT') p.gameId = null;
+        if (p && p.username !== 'BOT') p.gameId = null;
     });
-  }
+}
+
 
   async saveGameToDatabase(game, winner) {
     try {
@@ -212,8 +220,12 @@ class GameManager {
   }
 
   async updateLeaderboard(winner) {
+    if (!winner || winner === 'BOT') {
+        console.log('Skipping leaderboard update for:', winner);
+        return;
+    }
+
     console.log('Updating leaderboard for:', winner);
-    if (!winner || winner === 'BOT') return;
 
     try {
         const result = await pool.query(
@@ -222,14 +234,21 @@ class GameManager {
              ON CONFLICT(username)
              DO UPDATE SET
                wins = leaderboard.wins + 1,
-               games_played = leaderboard.games_played + 1`,
+               games_played = leaderboard.games_played + 1
+             RETURNING *`,
             [winner]
         );
-        console.log('Leaderboard update result:', result.rowCount, result);
+
+        if (result.rowCount > 0) {
+            console.log('Leaderboard updated successfully for', winner, result.rows[0]);
+        } else {
+            console.warn('Leaderboard update affected no rows for', winner);
+        }
     } catch (err) {
-        console.error('Leaderboard update failed:', err);
+        console.error('Leaderboard update failed for', winner, err);
     }
 }
+
 
 
   async getLeaderboard(limit = 10) {
