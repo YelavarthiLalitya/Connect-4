@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { pool } from './db.js';
 import { createEmptyBoard, dropDisc, checkWin, isFull } from './game/board.js';
 import { botMove } from './game/bot.js';
+import 'dotenv/config';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
