@@ -154,40 +154,61 @@ class GameManager {
   }
 
   async endGame(game, winner) {
+    console.log('Ending game:', game.id, 'Winner:', winner);
+
+    // Notify players
     this.broadcast(game, { type: 'end', winner, board: game.board, moves: game.moves });
 
     try {
+      // Save game to DB
       await this.saveGameToDatabase(game, winner);
-      if (winner && winner !== 'BOT') await this.updateLeaderboard(winner);
+
+      // Update leaderboard if winner is a real player
+      if (winner && winner !== 'BOT') {
+        await this.updateLeaderboard(winner);
+      } else {
+        console.log('No leaderboard update needed (BOT or no winner).');
+      }
     } catch (err) {
       console.error('Database error in endGame:', err);
     }
 
+    // Clean up
     this.games.delete(game.id);
-    game.players.forEach(p => { if (p && p.username !== 'BOT') p.gameId = null; });
+    game.players.forEach(p => {
+      if (p && p.username !== 'BOT') p.gameId = null;
+    });
   }
 
   async saveGameToDatabase(game, winner) {
-    await pool.query(
-      `INSERT INTO games(player1, player2, winner, moves, created_at) VALUES($1,$2,$3,$4,NOW())`,
-      [game.players[0].username, game.players[1].username, winner, JSON.stringify(game.moves)]
-    );
+    try {
+      console.log('Saving game to database:', game.id);
+      await pool.query(
+        `INSERT INTO games(player1, player2, winner, moves, created_at)
+         VALUES($1, $2, $3, $4, NOW())`,
+        [game.players[0].username, game.players[1].username, winner, JSON.stringify(game.moves)]
+      );
+      console.log('Game saved:', game.id);
+    } catch (err) {
+      console.error('Error saving game to DB:', err);
+    }
   }
 
   async updateLeaderboard(winner) {
-    if (!winner || winner === 'BOT') return; // ignore bot games
+    console.log('Updating leaderboard for:', winner);
+    if (!winner || winner === 'BOT') return;
 
     try {
-      await pool.query(
+      const result = await pool.query(
         `INSERT INTO leaderboard(username, wins, games_played)
          VALUES($1, 1, 1)
          ON CONFLICT(username)
-         DO UPDATE SET 
-           wins = leaderboard.wins + 1, 
+         DO UPDATE SET
+           wins = leaderboard.wins + 1,
            games_played = leaderboard.games_played + 1`,
         [winner]
       );
-      console.log(`Leaderboard updated for ${winner}`);
+      console.log('Leaderboard update result:', result.rowCount);
     } catch (err) {
       console.error('Leaderboard update failed:', err);
     }
@@ -203,10 +224,10 @@ class GameManager {
          LIMIT $1`,
         [limit]
       );
-      return rows || []; // always return an array
+      return rows || [];
     } catch (err) {
       console.error('getLeaderboard error:', err);
-      return []; // return empty array instead of throwing
+      return [];
     }
   }
 
