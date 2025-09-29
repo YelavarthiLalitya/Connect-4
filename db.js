@@ -1,14 +1,13 @@
-import { Pool } from 'pg';
+import pkg from 'pg';
+const { Pool } = pkg;
 
-if (!process.env.DATABASE_URL) {
-  console.error('ERROR: DATABASE_URL environment variable is not set');
-  console.error('Please set DATABASE_URL to your PostgreSQL connection string');
-  console.error('Example: DATABASE_URL=postgresql://user:password@host:port/database');
-  process.exit(1);
-}
-
+// Use deployment shared variables
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME || 'postgres',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || '',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
@@ -23,6 +22,7 @@ async function initializeDatabase() {
         moves JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       );`);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS leaderboard(
         username TEXT PRIMARY KEY,
@@ -30,6 +30,8 @@ async function initializeDatabase() {
         games_played INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW()
       );`);
+
+    console.log('Database initialized successfully');
   } catch (err) {
     console.error('Database initialization failed:', err);
     process.exit(1);
