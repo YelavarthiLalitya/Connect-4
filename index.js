@@ -31,11 +31,14 @@ app.get('/leaderboard', async (req, res) => {
   }
 });
 
+// Use environment port first, fallback to 3000
+const PORT = process.env.PORT || 3000;
 
-// Start HTTP server
-const server = app.listen(3000, () => {
-  console.log('Server running on :3000');
+// Bind to 0.0.0.0 so it's accessible outside the container
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
 
 // WebSocket server on same port
 const wss = new WebSocketServer({ server });
@@ -118,7 +121,17 @@ function botMoveAndEmit(game) {
 }
 
 function broadcast(game, data) {
-  game.players.forEach(p => p.username !== 'BOT' && p.send(JSON.stringify(data)));
+  game.players.forEach(p => {
+    if (!p || p.username === 'BOT') return;
+    try {
+      // readyState === 1 means OPEN for ws library
+      if (typeof p.readyState === 'number' && p.readyState === 1) {
+        p.send(JSON.stringify(data));
+      }
+    } catch (err) {
+      console.warn('Failed to send to a player', err);
+    }
+  });
 }
 
 async function endGame(game, winner) {

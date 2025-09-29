@@ -31,8 +31,14 @@
   <tbody></tbody>
 </table>
 
+<!-- keep your existing HTML; replace the <script> with this -->
 <script>
-let ws;
+const BACKEND_HOST = location.hostname;           // use same host as page
+const BACKEND_PORT = 3000;                        // change if your server uses different port
+const BACKEND_BASE = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+const WS_URL = `ws://${BACKEND_HOST}:${BACKEND_PORT}`;
+
+let ws = null;
 let myPlayer = null;
 let currentTurn = null;
 let board = Array.from({ length: 6 }, () => Array(7).fill(null));
@@ -50,11 +56,15 @@ function renderBoard() {
       if (board[r][c] === 0) cell.classList.add('player0');
       if (board[r][c] === 1) cell.classList.add('player1');
 
-      // Top-row clickable cells for dropping disc
+      // allow clicking any cell in top row to drop in that column when it's your turn
       if (r === 0 && currentTurn === myPlayer) {
         cell.classList.add('clickable');
         cell.onclick = () => {
-          ws.send(JSON.stringify({ type: 'move', col: c }));
+          try {
+            ws.send(JSON.stringify({ type: 'move', col: c }));
+          } catch (e) {
+            console.error('Failed to send move', e);
+          }
         };
       }
 
@@ -66,14 +76,13 @@ function renderBoard() {
 // Determine current turn based on disc counts
 function updateTurn() {
   const counts = {0:0, 1:0};
-  board.flat().forEach(v => { if(v!==null) counts[v]++; });
+  board.flat().forEach(v => { if (v !== null) counts[v]++; });
   currentTurn = (counts[0] <= counts[1]) ? 0 : 1;
 }
 
-// Fetch leaderboard from backend
-async function updateLeaderboard() {
+async function fetchLeaderboard() {
   try {
-    const res = await fetch('http://localhost:3001/leaderboard');
+    const res = await fetch(`${BACKEND_BASE}/leaderboard`);
     const data = await res.json();
     const tbody = document.querySelector('#leaderboard tbody');
     tbody.innerHTML = '';
@@ -87,12 +96,11 @@ async function updateLeaderboard() {
   }
 }
 
-// Join game
 document.getElementById('joinBtn').onclick = () => {
   const username = document.getElementById('username').value.trim();
   if (!username) return alert('Enter username');
 
-  ws = new WebSocket('ws://localhost:3000');
+  ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'join', username }));
@@ -121,46 +129,25 @@ document.getElementById('joinBtn').onclick = () => {
       renderBoard();
       winnerSpan.innerText = data.winner || 'Draw';
       status.innerText = 'Game ended!';
-      updateLeaderboard(); // refresh leaderboard
+      fetchLeaderboard(); // refresh leaderboard
     }
+  };
+
+  ws.onerror = (err) => {
+    console.error('WebSocket error', err);
+  };
+
+  ws.onclose = () => {
+    status.innerText = 'Disconnected from server';
   };
 
   renderBoard();
 };
 
-async function updateLeaderboard() {
-  try {
-    const res = await fetch('http://localhost:3000/leaderboard');
-    const data = await res.json();
-    const tbody = document.querySelector('#leaderboard tbody');
-    tbody.innerHTML = '';
-    data.forEach(player => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${player.username}</td><td>${player.wins}</td>`;
-      tbody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error('Failed to fetch leaderboard', err);
-  }
-}
-
 // Call on page load
-updateLeaderboard();
-
-// Refresh leaderboard after game ends
-ws.onmessage = msg => {
-  const data = JSON.parse(msg.data);
-  if (data.type === 'update') { board = data.board; renderBoard(); }
-  if (data.type === 'end') {
-    board = data.board || board;
-    renderBoard();
-    winnerSpan.innerText = data.winner || 'Draw';
-    status.innerText = 'Game ended!';
-    updateLeaderboard(); // refresh leaderboard
-  }
-};
-
+fetchLeaderboard();
 </script>
+
 
 </body>
 </html>
