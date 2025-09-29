@@ -2,17 +2,17 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { pool } from './db.js';
+import { pool, initializeDatabase } from './db.js';
 import { createEmptyBoard, dropDisc, checkWin, isFull } from './game/board.js';
 import { botMove } from './game/bot.js';
-import 'dotenv/config';
-
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+await initializeDatabase(); // ensure DB is ready before handling requests
 
 app.get('/leaderboard', async (req, res) => {
   try {
