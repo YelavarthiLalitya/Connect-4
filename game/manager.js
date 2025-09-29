@@ -21,28 +21,19 @@ class GameManager {
       }
     });
 
-    ws.on('close', () => {
-      this.handleDisconnect(ws);
-    });
-
-    ws.on('error', (err) => {
-      console.error('WebSocket error:', err);
-    });
+    ws.on('close', () => this.handleDisconnect(ws));
+    ws.on('error', err => console.error('WebSocket error:', err));
   }
 
   handleJoin(ws, username) {
     ws.username = username;
     ws.isAlive = true;
-    
-    if (ws.timeout) {
-      clearTimeout(ws.timeout);
-    }
-    
+
+    if (ws.timeout) clearTimeout(ws.timeout);
+
     const opponent = this.waiting.shift();
     if (opponent) {
-      if (opponent.timeout) {
-        clearTimeout(opponent.timeout);
-      }
+      if (opponent.timeout) clearTimeout(opponent.timeout);
       this.startGame(opponent, ws);
     } else {
       this.waiting.push(ws);
@@ -53,92 +44,66 @@ class GameManager {
   handleReconnect(ws, username, gameId) {
     const game = this.games.get(gameId);
     if (!game) return;
-    
+
     const playerIndex = game.players.findIndex(p => p.username === username);
     if (playerIndex === -1) return;
-    
-const disconnectedKey = `${gameId}_${username}`;
+
+    const disconnectedKey = `${gameId}_${username}`;
     if (this.disconnectedPlayers.has(disconnectedKey)) {
       clearTimeout(this.disconnectedPlayers.get(disconnectedKey));
       this.disconnectedPlayers.delete(disconnectedKey);
     }
-    
+
     ws.username = username;
     ws.gameId = gameId;
     ws.isAlive = true;
     game.players[playerIndex] = ws;
-    
-    ws.send(JSON.stringify({ 
-      type: 'reconnected', 
-      you: playerIndex, 
-      board: game.board,
-      turn: game.turn 
-    }));
+
+    ws.send(JSON.stringify({ type: 'reconnected', you: playerIndex, board: game.board, turn: game.turn }));
   }
 
   handleDisconnect(ws) {
-    if (ws.timeout) {
-      clearTimeout(ws.timeout);
-    }
-    
+    if (ws.timeout) clearTimeout(ws.timeout);
+
     const waitingIndex = this.waiting.indexOf(ws);
     if (waitingIndex > -1) {
       this.waiting.splice(waitingIndex, 1);
       return;
     }
-    
+
     const game = this.games.get(ws.gameId);
     if (!game || game.bot) return;
-    
+
     const playerIndex = game.players.indexOf(ws);
     if (playerIndex === -1) return;
-    
-const disconnectedKey = `${gameId}_${username}`;
+
+    const disconnectedKey = `${ws.gameId}_${ws.username}`;
     this.disconnectedPlayers.set(disconnectedKey, setTimeout(() => {
       const otherPlayer = game.players[1 - playerIndex];
-      if (otherPlayer && otherPlayer.username !== 'BOT') {
-        this.endGame(game, otherPlayer.username);
-      }
+      if (otherPlayer && otherPlayer.username !== 'BOT') this.endGame(game, otherPlayer.username);
       this.disconnectedPlayers.delete(disconnectedKey);
     }, 30000));
-    
+
     const otherPlayer = game.players[1 - playerIndex];
     if (otherPlayer && otherPlayer.readyState === 1) {
-      otherPlayer.send(JSON.stringify({ 
-        type: 'opponent_disconnected', 
-        message: 'Opponent disconnected. They have 30 seconds to reconnect.' 
-      }));
+      otherPlayer.send(JSON.stringify({ type: 'opponent_disconnected', message: 'Opponent disconnected. They have 30 seconds to reconnect.' }));
     }
   }
 
   startGame(p1, p2, bot = false) {
     const id = Date.now().toString();
     const board = createEmptyBoard();
-    const game = { 
-      id, 
-      board, 
-      players: [p1, p2], 
-      turn: 0, 
-      bot,
-      moves: []
-    };
+    const game = { id, board, players: [p1, p2], turn: 0, bot, moves: [] };
     this.games.set(id, game);
 
     [p1, p2].forEach((p, i) => {
       if (p.username !== 'BOT') {
         p.gameId = id;
-        p.send(JSON.stringify({ 
-          type: 'start', 
-          you: i, 
-          board: game.board,
-          gameId: id
-        }));
+        p.send(JSON.stringify({ type: 'start', you: i, board: game.board, gameId: id }));
       }
     });
 
-    if (bot && game.turn === 1) {
-      setTimeout(() => this.executeBotMove(game), 500);
-    }
+    if (bot && game.turn === 1) setTimeout(() => this.executeBotMove(game), 500);
   }
 
   startBotGame(p1) {
@@ -147,61 +112,53 @@ const disconnectedKey = `${gameId}_${username}`;
   }
 
   handleMove(ws, col) {
-    const game = this.games.get(ws.gameId);
-    if (!game) return;
+  console.log('handleMove called:', ws.username, 'col:', col);
 
-    const playerIndex = game.players.indexOf(ws);
-    if (playerIndex !== game.turn) return;
-
-    const row = dropDisc(game.board, col, game.turn);
-    if (row === -1) return;
-
-    game.moves.push({ player: game.turn, col, row, timestamp: Date.now() });
-
-    this.broadcast(game, { 
-      type: 'update', 
-      board: game.board,
-      lastMove: { col, row, player: game.turn }
-    });
-
-    if (checkWin(game.board, game.turn)) {
-      return this.endGame(game, ws.username);
-    }
-    
-    if (isFull(game.board)) {
-      return this.endGame(game, null);
-    }
-
-    game.turn = 1 - game.turn;
-
-    if (game.bot && game.players[game.turn].username === 'BOT') {
-      setTimeout(() => this.executeBotMove(game), 800);
-    }
+  const game = this.games.get(ws.gameId);
+  if (!game) {
+    console.log('No game found for ws.gameId:', ws.gameId);
+    return;
   }
+
+  const playerIndex = game.players.indexOf(ws);
+  if (playerIndex !== game.turn) {
+    console.log('Not your turn:', ws.username);
+    return;
+  }
+
+  const row = dropDisc(game.board, col, game.turn);
+  console.log('Disc dropped at row:', row);
+  if (row === -1) return;
+
+  game.moves.push({ player: game.turn, col, row, timestamp: Date.now() });
+  this.broadcast(game, { type: 'update', board: game.board, lastMove: { col, row, player: game.turn } });
+
+  if (checkWin(game.board, game.turn)) {
+    console.log('Player won:', ws.username);
+    return this.endGame(game, ws.username);
+  }
+
+  if (isFull(game.board)) {
+    console.log('Board full, draw');
+    return this.endGame(game, null);
+  }
+
+  game.turn = 1 - game.turn;
+  if (game.bot && game.players[game.turn].username === 'BOT') setTimeout(() => this.executeBotMove(game), 800);
+}
+
 
   executeBotMove(game) {
     if (!this.games.has(game.id)) return;
-
     const botCol = botMove(game.board, 1, 0);
     const row = dropDisc(game.board, botCol, 1);
-    
     if (row === -1) return;
 
     game.moves.push({ player: 1, col: botCol, row, timestamp: Date.now() });
+    this.broadcast(game, { type: 'update', board: game.board, lastMove: { col: botCol, row, player: 1 } });
 
-    this.broadcast(game, { 
-      type: 'update', 
-      board: game.board,
-      lastMove: { col: botCol, row, player: 1 }
-    });
-
-    if (checkWin(game.board, 1)) {
-      return this.endGame(game, 'BOT');
-    }
-    
-    if (isFull(game.board)) {
-      return this.endGame(game, null);
-    }
+    if (checkWin(game.board, 1)) return this.endGame(game, 'BOT');
+    if (isFull(game.board)) return this.endGame(game, null);
 
     game.turn = 0;
   }
@@ -209,174 +166,139 @@ const disconnectedKey = `${gameId}_${username}`;
   broadcast(game, data) {
     game.players.forEach(p => {
       if (!p || p.username === 'BOT') return;
-      try {
-        if (p.readyState === 1) {
-          p.send(JSON.stringify(data));
-        }
-      } catch (err) {
-        console.error('Broadcast error:', err);
-      }
+      if (p.readyState === 1) p.send(JSON.stringify(data));
     });
   }
 
-  async endGame(game, winner) {
-    this.broadcast(game, { 
-      type: 'end', 
-      winner, 
-      board: game.board,
-      moves: game.moves
-    });
+ async endGame(game, winner) {
+    console.log('Ending game:', game.id, 'Winner:', winner);
 
-    try {
-      await this.saveGameToDatabase(game, winner);
-      
-      const player1 = game.players[0].username;
-      const player2 = game.players[1].username;
-      
-      if (player1 !== 'BOT') {
-        await this.updatePlayerStats(player1, winner === player1);
-      }
-      if (player2 !== 'BOT') {
-        await this.updatePlayerStats(player2, winner === player2);
-      }
-    } catch (err) {
-      console.error('Database error in endGame:', err);
+    // Determine real winner
+    if (!winner) {
+        console.log('Game ended in a draw.');
+    } else if (winner === 'BOT') {
+        console.log('Bot won, leaderboard not updated.');
+    } else {
+        console.log('Player won:', winner);
     }
 
-    this.games.delete(game.id);
+    // Notify players
+    this.broadcast(game, { type: 'end', winner, board: game.board, moves: game.moves });
 
+    try {
+        // Save game to DB
+        await this.saveGameToDatabase(game, winner);
+
+        // Update leaderboard only for real players
+        if (winner && winner !== 'BOT') {
+            await this.updateLeaderboard(winner);
+        }
+    } catch (err) {
+        console.error('Error in endGame DB operations:', err);
+    }
+
+    // Clean up
+    this.games.delete(game.id);
     game.players.forEach(p => {
-      if (p && p.username !== 'BOT') {
-        p.gameId = null;
-      }
+        if (p && p.username !== 'BOT') p.gameId = null;
     });
-  }
+}
+
 
   async saveGameToDatabase(game, winner) {
-    const gameData = {
-      player1: game.players[0].username,
-      player2: game.players[1].username,
-      winner: winner,
-      moves: game.moves,
-      board: game.board,
-      duration: game.moves.length > 0 ? 
-        game.moves[game.moves.length - 1].timestamp - game.moves[0].timestamp : 0
-    };
-
-    await pool.query(
-      `INSERT INTO games(player1, player2, winner, moves, created_at) 
-       VALUES($1, $2, $3, $4, NOW())`,
-      [
-        gameData.player1,
-        gameData.player2,
-        gameData.winner,
-        JSON.stringify(gameData)
-      ]
-    );
+    try {
+      console.log('Saving game to database:', game.id);
+      await pool.query(
+        `INSERT INTO games(player1, player2, winner, moves, created_at)
+         VALUES($1, $2, $3, $4, NOW())`,
+        [game.players[0].username, game.players[1].username, winner, JSON.stringify(game.moves)]
+      );
+      console.log('Game saved:', game.id);
+    } catch (err) {
+      console.error('Error saving game to DB:', err);
+    }
   }
 
   async updateLeaderboard(winner) {
-    await pool.query(
-      `INSERT INTO leaderboard(username, wins, games_played)
-       VALUES($1, 1, 1)
-       ON CONFLICT (username)
-       DO UPDATE SET 
-         wins = leaderboard.wins + 1,
-         games_played = leaderboard.games_played + 1`,
-      [winner]
-    );
-  }
+    if (!winner || winner === 'BOT') {
+        console.log('Skipping leaderboard update for:', winner);
+        return;
+    }
 
-  async updatePlayerStats(player, isWin) {
-    const wins = isWin ? 1 : 0;
-    await pool.query(
-      `INSERT INTO leaderboard(username, wins, games_played)
-       VALUES($1, $2, 1)
-       ON CONFLICT (username)
-       DO UPDATE SET 
-         wins = leaderboard.wins + $2,
-         games_played = leaderboard.games_played + 1`,
-      [player, wins]
-    );
-  }
+    console.log('Updating leaderboard for:', winner);
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO leaderboard(username, wins, games_played)
+             VALUES($1, 1, 1)
+             ON CONFLICT(username)
+             DO UPDATE SET
+               wins = leaderboard.wins + 1,
+               games_played = leaderboard.games_played + 1
+             RETURNING *`,
+            [winner]
+        );
+
+        if (result.rowCount > 0) {
+            console.log('Leaderboard updated successfully for', winner, result.rows[0]);
+        } else {
+            console.warn('Leaderboard update affected no rows for', winner);
+        }
+    } catch (err) {
+        console.error('Leaderboard update failed for', winner, err);
+    }
+}
+
+
 
   async getLeaderboard(limit = 10) {
     try {
       const { rows } = await pool.query(
-        `SELECT username, wins, 
-         COALESCE(games_played, 0) as games_played
-         FROM leaderboard 
-         WHERE wins > 0
-         ORDER BY wins DESC
+        `SELECT username, wins, games_played,
+         CASE WHEN games_played>0 THEN ROUND((wins::decimal / games_played)*100,1) ELSE 0 END AS win_rate
+         FROM leaderboard
+         ORDER BY wins DESC, win_rate DESC
          LIMIT $1`,
         [limit]
       );
-      return rows;
+      return rows || [];
     } catch (err) {
-      console.error('Leaderboard fetch error:', err);
-      try {
-        const { rows } = await pool.query(
-          `SELECT username, wins FROM leaderboard ORDER BY wins DESC LIMIT $1`,
-          [limit]
-        );
-        return rows;
-      } catch (fallbackErr) {
-        console.error('Fallback leaderboard fetch error:', fallbackErr);
-        return [];
-      }
-    }
-  }
-
-  async getGameHistory(username, limit = 10) {
-    try {
-      const { rows } = await pool.query(
-        `SELECT player1, player2, winner, created_at
-         FROM games 
-         WHERE player1 = $1 OR player2 = $1
-         ORDER BY created_at DESC 
-         LIMIT $2`,
-        [username, limit]
-      );
-      return rows;
-    } catch (err) {
-      console.error('Game history fetch error:', err);
+      console.error('getLeaderboard error:', err);
       return [];
     }
   }
 
-  getActiveGamesCount() {
-    return this.games.size;
+
+  async getGameHistory(username, limit = 10) {
+    const { rows } = await pool.query(
+      `SELECT player1, player2, winner, created_at
+       FROM games
+       WHERE player1=$1 OR player2=$1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [username, limit]
+    );
+    return rows;
   }
 
-  getWaitingPlayersCount() {
-    return this.waiting.length;
-  }
-
+  getActiveGamesCount() { return this.games.size; }
+  getWaitingPlayersCount() { return this.waiting.length; }
   getGameStats() {
-    return {
-      activeGames: this.getActiveGamesCount(),
-      waitingPlayers: this.getWaitingPlayersCount(),
-      totalPlayers: this.games.size * 2 + this.waiting.length
-    };
+    return { activeGames: this.getActiveGamesCount(), waitingPlayers: this.getWaitingPlayersCount(), totalPlayers: this.games.size * 2 + this.waiting.length };
   }
 
   setupHeartbeat(wss) {
     setInterval(() => {
       wss.clients.forEach(ws => {
-        if (!ws.isAlive) {
-          ws.terminate();
-          return;
-        }
-        ws.isAlive = false;
+        if (!ws.isAlive) ws.terminate();
+        else ws.isAlive = false;
         ws.ping();
       });
     }, 30000);
 
     wss.on('connection', ws => {
       ws.isAlive = true;
-      ws.on('pong', () => {
-        ws.isAlive = true;
-      });
+      ws.on('pong', () => ws.isAlive = true);
     });
   }
 }
