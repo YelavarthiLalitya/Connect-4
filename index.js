@@ -3,6 +3,8 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import GameManager from './game/manager.js';
+import 'dotenv/config';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
