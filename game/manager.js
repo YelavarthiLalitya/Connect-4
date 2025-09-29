@@ -112,24 +112,41 @@ class GameManager {
   }
 
   handleMove(ws, col) {
-    const game = this.games.get(ws.gameId);
-    if (!game) return;
+  console.log('handleMove called:', ws.username, 'col:', col);
 
-    const playerIndex = game.players.indexOf(ws);
-    if (playerIndex !== game.turn) return;
-
-    const row = dropDisc(game.board, col, game.turn);
-    if (row === -1) return;
-
-    game.moves.push({ player: game.turn, col, row, timestamp: Date.now() });
-    this.broadcast(game, { type: 'update', board: game.board, lastMove: { col, row, player: game.turn } });
-
-    if (checkWin(game.board, game.turn)) return this.endGame(game, ws.username);
-    if (isFull(game.board)) return this.endGame(game, null);
-
-    game.turn = 1 - game.turn;
-    if (game.bot && game.players[game.turn].username === 'BOT') setTimeout(() => this.executeBotMove(game), 800);
+  const game = this.games.get(ws.gameId);
+  if (!game) {
+    console.log('No game found for ws.gameId:', ws.gameId);
+    return;
   }
+
+  const playerIndex = game.players.indexOf(ws);
+  if (playerIndex !== game.turn) {
+    console.log('Not your turn:', ws.username);
+    return;
+  }
+
+  const row = dropDisc(game.board, col, game.turn);
+  console.log('Disc dropped at row:', row);
+  if (row === -1) return;
+
+  game.moves.push({ player: game.turn, col, row, timestamp: Date.now() });
+  this.broadcast(game, { type: 'update', board: game.board, lastMove: { col, row, player: game.turn } });
+
+  if (checkWin(game.board, game.turn)) {
+    console.log('Player won:', ws.username);
+    return this.endGame(game, ws.username);
+  }
+
+  if (isFull(game.board)) {
+    console.log('Board full, draw');
+    return this.endGame(game, null);
+  }
+
+  game.turn = 1 - game.turn;
+  if (game.bot && game.players[game.turn].username === 'BOT') setTimeout(() => this.executeBotMove(game), 800);
+}
+
 
   executeBotMove(game) {
     if (!this.games.has(game.id)) return;
