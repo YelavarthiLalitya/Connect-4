@@ -175,14 +175,21 @@ class GameManager {
   }
 
   async updateLeaderboard(winner) {
-    await pool.query(
+  console.log('Updating leaderboard for', winner);
+  try {
+    const res = await pool.query(
       `INSERT INTO leaderboard(username, wins, games_played)
        VALUES($1, 1, 1)
        ON CONFLICT(username) 
        DO UPDATE SET wins = leaderboard.wins + 1, games_played = leaderboard.games_played + 1`,
       [winner]
     );
+    console.log('Leaderboard updated', res.rowCount);
+  } catch (err) {
+    console.error('Leaderboard update failed:', err);
   }
+}
+
 
   async getLeaderboard(limit = 10) {
     const { rows } = await pool.query(
