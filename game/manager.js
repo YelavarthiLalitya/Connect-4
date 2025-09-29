@@ -192,6 +192,7 @@ class GameManager {
 
 
   async getLeaderboard(limit = 10) {
+  try {
     const { rows } = await pool.query(
       `SELECT username, wins, games_played,
        CASE WHEN games_played>0 THEN ROUND((wins::decimal / games_played)*100,1) ELSE 0 END AS win_rate
@@ -200,8 +201,14 @@ class GameManager {
        LIMIT $1`,
       [limit]
     );
+    console.log('Leaderboard rows:', rows); // see what comes from DB
     return rows;
+  } catch (err) {
+    console.error('getLeaderboard error:', err);
+    throw err; // triggers 500
   }
+}
+
 
   async getGameHistory(username, limit = 10) {
     const { rows } = await pool.query(
