@@ -216,20 +216,21 @@ class GameManager {
     if (!winner || winner === 'BOT') return;
 
     try {
-      const result = await pool.query(
-        `INSERT INTO leaderboard(username, wins, games_played)
-         VALUES($1, 1, 1)
-         ON CONFLICT(username)
-         DO UPDATE SET
-           wins = leaderboard.wins + 1,
-           games_played = leaderboard.games_played + 1`,
-        [winner]
-      );
-      console.log('Leaderboard update result:', result.rowCount);
+        const result = await pool.query(
+            `INSERT INTO leaderboard(username, wins, games_played)
+             VALUES($1, 1, 1)
+             ON CONFLICT(username)
+             DO UPDATE SET
+               wins = leaderboard.wins + 1,
+               games_played = leaderboard.games_played + 1`,
+            [winner]
+        );
+        console.log('Leaderboard update result:', result.rowCount, result);
     } catch (err) {
-      console.error('Leaderboard update failed:', err);
+        console.error('Leaderboard update failed:', err);
     }
-  }
+}
+
 
   async getLeaderboard(limit = 10) {
     try {
