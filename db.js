@@ -1,35 +1,42 @@
-import pkg from 'pg';
-const { Pool } = pkg;
+import { Pool } from 'pg';
+
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set');
+  console.error('Please set DATABASE_URL to your PostgreSQL connection string');
+  console.error('Example: DATABASE_URL=postgresql://user:password@host:port/database');
+  process.exit(1);
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // required for Neon
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Initialize tables if they don't exist
 async function initializeDatabase() {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS games (
+      CREATE TABLE IF NOT EXISTS games(
         id SERIAL PRIMARY KEY,
         player1 TEXT,
         player2 TEXT,
         winner TEXT,
         moves JSONB,
         created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
+      );`);
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS leaderboard (
+      CREATE TABLE IF NOT EXISTS leaderboard(
         username TEXT PRIMARY KEY,
         wins INT DEFAULT 0,
         games_played INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW()
-      );
+      );`);
+    
+    await pool.query(`
+      ALTER TABLE leaderboard 
+      ADD COLUMN IF NOT EXISTS games_played INT DEFAULT 0;
     `);
-
-    console.log('Database initialized successfully');
+    
+    console.log('Database tables initialized successfully');
   } catch (err) {
     console.error('Database initialization failed:', err);
     process.exit(1);

@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import GameManager from './game/manager.js';
 import 'dotenv/config';
 
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const gameManager = new GameManager();
@@ -16,16 +15,27 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/leaderboard', async (req, res) => {
   try {
     const leaderboard = await gameManager.getLeaderboard();
-    res.json(leaderboard); // always an array
+    console.log('Leaderboard data:', leaderboard);
+    res.json(leaderboard);
   } catch (err) {
     console.error('Leaderboard API error:', err);
-    res.json([]); // never send a 500, send empty array
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
   }
 });
 
-
 app.get('/stats', (req, res) => {
   res.json(gameManager.getGameStats());
+});
+
+app.get('/test-db', async (req, res) => {
+  try {
+    const { pool } = await import('./db.js');
+    const result = await pool.query('SELECT NOW() as current_time');
+    res.json({ status: 'Database connected', time: result.rows[0].current_time });
+  } catch (err) {
+    console.error('Database test error:', err);
+    res.status(500).json({ error: 'Database connection failed', details: err.message });
+  }
 });
 
 app.get('/history/:username', async (req, res) => {
@@ -40,7 +50,7 @@ app.get('/history/:username', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, '0.0.0.0', () => {
-console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });
@@ -50,3 +60,7 @@ wss.on('connection', ws => {
 });
 
 gameManager.setupHeartbeat(wss);
+
+
+
+index.js
