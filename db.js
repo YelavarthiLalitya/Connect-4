@@ -1,15 +1,11 @@
-import pkg from 'pg';
-const { Pool } = pkg;
+import { Pool } from 'pg';
 
-export const pool = new Pool({
-  user: 'postgres',
-  password: 'lalitya',
-  host: 'localhost',
-  port: 5432,
-  database: 'connect4'
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-(async () => {
+async function initializeDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS games(
@@ -26,7 +22,11 @@ export const pool = new Pool({
         wins INT DEFAULT 0
       );`);
   } catch (err) {
-    console.error('Failed to ensure DB schema:', err);
-    // Don't crash — but you can rethrow if you want the process to exit
+    console.error('Database initialization failed:', err);
+    process.exit(1);
   }
-})();
+}
+
+initializeDatabase();
+
+export { pool };

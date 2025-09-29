@@ -5,27 +5,31 @@ export function createEmptyBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
 
-// board: 6x7, 0 = empty, 0/1 = player/bot
 export function dropDisc(board, col, disc) {
-  for (let row = 5; row >= 0; row--) { // bottom-up
+  if (col < 0 || col >= COLS) return -1;
+  for (let row = ROWS - 1; row >= 0; row--) {
     if (board[row][col] === null) {
       board[row][col] = disc;
       return row;
     }
   }
-  return -1; // column full
+  return -1;
 }
 
-
 export function checkWin(board, disc) {
-  const dirs = [
+  const directions = [
     [0, 1], [1, 0], [1, 1], [1, -1]
   ];
+  
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (board[r][c] !== disc) continue;
-      for (const [dr, dc] of dirs) {
-        let count = 1, rr = r + dr, cc = c + dc;
+      
+      for (const [dr, dc] of directions) {
+        let count = 1;
+        let rr = r + dr;
+        let cc = c + dc;
+        
         while (
           rr >= 0 && rr < ROWS &&
           cc >= 0 && cc < COLS &&
@@ -33,7 +37,8 @@ export function checkWin(board, disc) {
         ) {
           count++;
           if (count === 4) return true;
-          rr += dr; cc += dc;
+          rr += dr;
+          cc += dc;
         }
       }
     }
@@ -42,5 +47,15 @@ export function checkWin(board, disc) {
 }
 
 export function isFull(board) {
-  return board.every(row => row.every(cell => cell));
+  return board[0].every(cell => cell !== null);
+}
+
+export function getValidColumns(board) {
+  const valid = [];
+  for (let c = 0; c < COLS; c++) {
+    if (board[0][c] === null) {
+      valid.push(c);
+    }
+  }
+  return valid;
 }

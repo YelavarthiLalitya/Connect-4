@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect 4 - Multiplayer Game</title>
+<style>
+  body { 
+    font-family: Arial, sans-serif; 
+    margin: 0; 
+    padding: 20px; 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    min-height: 100vh;
+  }
+  .container { max-width: 800px; margin: 0 auto; }
+  h1 { text-align: center; margin-bottom: 30px; }
+  .game-section { 
+    background: rgba(255,255,255,0.1); 
+    padding: 20px; 
+    border-radius: 10px; 
+    margin-bottom: 20px; 
+  }
+  .login-section { text-align: center; }
+  #username { 
+    padding: 10px; 
+    border: none; 
+    border-radius: 5px; 
+    margin-right: 10px; 
+    font-size: 16px;
+  }
+  button { 
+    padding: 10px 20px; 
+    background: #4CAF50; 
+    color: white; 
+    border: none; 
+    border-radius: 5px; 
+    cursor: pointer; 
+    font-size: 16px;
+  }
+  button:hover { background: #45a049; }
+  button:disabled { background: #cccccc; cursor: not-allowed; }
+  #status { 
+    text-align: center; 
+    font-size: 18px; 
+    margin: 20px 0; 
+    min-height: 25px;
+  }
+  #board { 
+    display: grid; 
+    grid-template-columns: repeat(7, 60px); 
+    grid-gap: 8px; 
+    justify-content: center;
+    margin: 20px 0;
+  }
+  .cell { 
+    width: 60px; 
+    height: 60px; 
+    background: #2c3e50; 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    transition: all 0.3s ease;
+  }
+  .player0 { background: #e74c3c; }
+  .player1 { background: #f1c40f; }
+  .clickable { 
+    cursor: pointer; 
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(255,255,255,0.5);
+  }
+  .clickable:hover { transform: scale(1.2); }
+  .winner-section { text-align: center; font-size: 24px; margin: 20px 0; }
+  .leaderboard { 
+    background: rgba(255,255,255,0.1); 
+    padding: 20px; 
+    border-radius: 10px; 
+  }
+  table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-top: 10px; 
+  }
+  th, td { 
+    padding: 10px; 
+    text-align: left; 
+    border-bottom: 1px solid rgba(255,255,255,0.2); 
+  }
+  th { background: rgba(255,255,255,0.1); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Connect 4 - Multiplayer Game</h1>
+  
+  <div class="game-section">
+    <div class="login-section" id="loginSection">
+      <input type="text" id="username" placeholder="Enter your username" maxlength="20" />
+      <button id="joinBtn">Join Game</button>
+    </div>
+    
+    <div id="status"></div>
+    <div id="board"></div>
+    
+    <div class="winner-section">
+      <div id="winner"></div>
+      <button id="newGameBtn" class="hidden" onclick="location.reload()">New Game</button>
+    </div>
+  </div>
+  
+  <div class="leaderboard">
+    <h3>Leaderboard</h3>
+    <table id="leaderboard">
+      <thead>
+        <tr><th>Player</th><th>Wins</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const BACKEND_BASE = `${location.protocol}//${location.host}`;
+const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+
+let ws = null;
+let myPlayer = null;
+let currentTurn = null;
+let gameId = null;
+let board = Array.from({ length: 6 }, () => Array(7).fill(null));
+
+const boardDiv = document.getElementById('board');
+const status = document.getElementById('status');
+const winnerDiv = document.getElementById('winner');
+const usernameInput = document.getElementById('username');
+const joinBtn = document.getElementById('joinBtn');
+const loginSection = document.getElementById('loginSection');
+const newGameBtn = document.getElementById('newGameBtn');
+
+function renderBoard() {
+  boardDiv.innerHTML = '';
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 7; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (board[r][c] === 0) cell.classList.add('player0');
+      if (board[r][c] === 1) cell.classList.add('player1');
+
+      if (r === 0 && currentTurn === myPlayer && ws && ws.readyState === WebSocket.OPEN) {
+        cell.classList.add('clickable');
+        cell.onclick = () => makeMove(c);
+      }
+
+      boardDiv.appendChild(cell);
+    }
+  }
+}
+
+function makeMove(col) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'move', col: col }));
+  }
+}
+
+function updateTurn() {
+  const counts = {0: 0, 1: 0};
+  board.flat().forEach(v => { if (v !== null) counts[v]++; });
+  currentTurn = (counts[0] <= counts[1]) ? 0 : 1;
+}
+
+async function fetchLeaderboard() {
+  try {
+    const res = await fetch(`${BACKEND_BASE}/leaderboard`);
+    const data = await res.json();
+    const tbody = document.querySelector('#leaderboard tbody');
+    tbody.innerHTML = '';
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">No games played yet</td></tr>';
+    } else {
+      data.forEach(player => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(player.username)}</td><td>${player.wins}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+  } catch (err) {
+    console.error('Failed to fetch leaderboard', err);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function connectToGame() {
+  const username = usernameInput.value.trim();
+  if (!username) {
+    alert('Please enter a username');
+    return;
+  }
+
+  joinBtn.disabled = true;
+  usernameInput.disabled = true;
+  
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'join', username }));
+    status.textContent = 'Waiting for opponent...';
+  };
+
+  ws.onmessage = msg => {
+    try {
+      const data = JSON.parse(msg.data);
+      handleMessage(data);
+    } catch (err) {
+      console.error('Message parsing error:', err);
+    }
+  };
+
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    status.textContent = 'Connection error';
+    resetUI();
+  };
+
+  ws.onclose = () => {
+    status.textContent = 'Disconnected from server';
+    resetUI();
+  };
+
+  renderBoard();
+}
+
+function handleMessage(data) {
+  switch(data.type) {
+    case 'start':
+      myPlayer = data.you;
+      gameId = data.gameId;
+      board = data.board || board;
+      status.textContent = `Game started! You are Player ${myPlayer + 1} (${myPlayer === 0 ? 'Red' : 'Yellow'})`;
+      updateTurn();
+      renderBoard();
+      break;
+
+    case 'update':
+      board = data.board;
+      updateTurn();
+      renderBoard();
+      status.textContent = currentTurn === myPlayer ? "Your turn" : "Opponent's turn";
+      break;
+
+    case 'end':
+      board = data.board || board;
+      renderBoard();
+      const winner = data.winner;
+      if (winner === null) {
+        winnerDiv.textContent = "Game ended in a draw!";
+      } else if (winner === usernameInput.value.trim()) {
+        winnerDiv.textContent = "You won! 🎉";
+      } else {
+        winnerDiv.textContent = `${winner} won!`;
+      }
+      status.textContent = 'Game ended';
+      newGameBtn.classList.remove('hidden');
+      fetchLeaderboard();
+      break;
+
+    case 'opponent_disconnected':
+      status.textContent = data.message;
+      break;
+
+    case 'reconnected':
+      myPlayer = data.you;
+      board = data.board;
+      currentTurn = data.turn;
+      status.textContent = 'Reconnected to game!';
+      renderBoard();
+      break;
+  }
+}
+
+function resetUI() {
+  joinBtn.disabled = false;
+  usernameInput.disabled = false;
+  winnerDiv.textContent = '';
+  newGameBtn.classList.add('hidden');
+}
+
+usernameInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    connectToGame();
+  }
+});
+
+joinBtn.onclick = connectToGame;
+
+fetchLeaderboard();
+</script>
+
+
+</body>
+</html>
