@@ -175,39 +175,40 @@ class GameManager {
   }
 
   async updateLeaderboard(winner) {
-  console.log('Updating leaderboard for', winner);
-  try {
-    const res = await pool.query(
-      `INSERT INTO leaderboard(username, wins, games_played)
-       VALUES($1, 1, 1)
-       ON CONFLICT(username) 
-       DO UPDATE SET wins = leaderboard.wins + 1, games_played = leaderboard.games_played + 1`,
-      [winner]
-    );
-    console.log('Leaderboard updated', res.rowCount);
-  } catch (err) {
-    console.error('Leaderboard update failed:', err);
-  }
-}
+    if (!winner || winner === 'BOT') return; // ignore bot games
 
+    try {
+      await pool.query(
+        `INSERT INTO leaderboard(username, wins, games_played)
+         VALUES($1, 1, 1)
+         ON CONFLICT(username)
+         DO UPDATE SET 
+           wins = leaderboard.wins + 1, 
+           games_played = leaderboard.games_played + 1`,
+        [winner]
+      );
+      console.log(`Leaderboard updated for ${winner}`);
+    } catch (err) {
+      console.error('Leaderboard update failed:', err);
+    }
+  }
 
   async getLeaderboard(limit = 10) {
-  try {
-    const { rows } = await pool.query(
-      `SELECT username, wins, games_played,
-       CASE WHEN games_played>0 THEN ROUND((wins::decimal / games_played)*100,1) ELSE 0 END AS win_rate
-       FROM leaderboard
-       ORDER BY wins DESC, win_rate DESC
-       LIMIT $1`,
-      [limit]
-    );
-    console.log('Leaderboard rows:', rows); // see what comes from DB
-    return rows;
-  } catch (err) {
-    console.error('getLeaderboard error:', err);
-    throw err; // triggers 500
+    try {
+      const { rows } = await pool.query(
+        `SELECT username, wins, games_played,
+         CASE WHEN games_played>0 THEN ROUND((wins::decimal / games_played)*100,1) ELSE 0 END AS win_rate
+         FROM leaderboard
+         ORDER BY wins DESC, win_rate DESC
+         LIMIT $1`,
+        [limit]
+      );
+      return rows || []; // always return an array
+    } catch (err) {
+      console.error('getLeaderboard error:', err);
+      return []; // return empty array instead of throwing
+    }
   }
-}
 
 
   async getGameHistory(username, limit = 10) {
