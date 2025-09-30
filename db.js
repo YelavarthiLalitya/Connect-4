@@ -3,10 +3,9 @@ const { Pool } = pkg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // required for Neon
+  ssl: { rejectUnauthorized: false } 
 });
 
-// Initialize tables if they don't exist
 async function initializeDatabase() {
   try {
     await pool.query(`
