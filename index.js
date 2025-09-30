@@ -16,10 +16,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/leaderboard', async (req, res) => {
   try {
     const leaderboard = await gameManager.getLeaderboard();
-    res.json(leaderboard); // always an array
+    res.json(leaderboard); 
   } catch (err) {
     console.error('Leaderboard API error:', err);
-    res.json([]); // never send a 500, send empty array
+    res.json([]); 
   }
 });
 
